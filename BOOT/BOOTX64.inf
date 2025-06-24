@@ -1,0 +1,32 @@
+[Defines]
+  INF_VERSION                    = 1.25
+  BASE_NAME                      = BOOTX64
+  FILE_GUID                      = 729f3699-6877-492b-8f5a-b5eabb9f8ca3
+  MODULE_TYPE                    = UEFI_APPLICATION
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = UefiMain
+#
+# The following information is for reference only and not required by the build tools.
+#
+#  VALID_ARCHITECTURES           = IA32 X64 IPF EBC Etc...
+#
+
+[Sources]
+  BOOTX64.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  
+[LibraryClasses]
+  UefiApplicationEntryPoint
+  UefiLib
+  
+[Guids]
+
+[Ppis]
+
+[Protocols]
+
+[FeaturePcd]
+
+[Pcd]

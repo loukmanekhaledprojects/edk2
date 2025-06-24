@@ -533,6 +533,7 @@
 
 [Components.X64]
   MdeModulePkg/Universal/CapsulePei/CapsuleX64.inf
+  BOOT/BOOTX64.inf
 
 [Components.ARM, Components.AARCH64]
   MdeModulePkg/Library/ArmFfaLib/ArmFfaPeiLib.inf
