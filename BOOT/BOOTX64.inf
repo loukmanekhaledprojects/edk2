@@ -13,6 +13,10 @@
 
 [Sources]
   BOOTX64.c
+  ..\..\lib\userstaticlib.lib
+[BuildOptions.X64.VS2022]
+  RELEASE_VS2022_X64_CC_FLAGS   = /I"C:\Users\loukd\Desktop\OS\inc"
+  RELEASE_VS2022_X64_DLINK_FLAGS = /NODEFAULTLIB
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -20,9 +24,9 @@
 [LibraryClasses]
   UefiApplicationEntryPoint
   UefiLib
-  
-[Guids]
 
+[Guids]
+  gEfiFileInfoGuid
 [Ppis]
 
 [Protocols]
