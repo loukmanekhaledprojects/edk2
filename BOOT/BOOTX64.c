@@ -201,16 +201,44 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
     }
     DrawText(L"BISMILLAH", 120, 120, 99, 0xFFFFFF);
 
-    DrawText(L"Operating System Booting...", 300, 400, 18, 0xaaaaaa);
+    DrawText(L"Operating System Booting...", 300, 400, 22, 0xFFFFFF);
     
     void* KernelFile = ReadFile(L"\\System\\OSKERNEL.EXE", &FileSize);
     OsKernelData->Image = LoadImage(KernelFile, FileSize, NULL);
     Print(L"KIMG %lx BASE %lx ENTRY_POINT %lx File %lx File Size %lx , First bytes %x %x %x %x\n", OsKernelData->Image, OsKernelData->Image->Base, OsKernelData->Image->EntryPoint, KernelFile, FileSize);
     OSKERNELENTRY OsKernelEntry = (OSKERNELENTRY)OsKernelData->Image->EntryPoint;
 
+// Get the memory map
+UINTN MapSize = 0, DescriptorSize = 0, MapKey = 0;
+UINT32 DescriptorVersion = 0;
+EFI_MEMORY_DESCRIPTOR* MemoryMap = NULL;
+Status = gBS->GetMemoryMap(&MapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+if(Status != EFI_BUFFER_TOO_SMALL) {
+	Print(L"Failed to get memory map\n");
+	return EFI_UNSUPPORTED;
+}
+MapSize += 3 * DescriptorSize;
+gBS->AllocatePool(EfiLoaderData, MapSize, (void**)&MemoryMap);
 
+if(EFI_ERROR(gBS->GetMemoryMap(&MapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion))) {
+	Print(L"Failed to get memory map\n");
+	return EFI_UNSUPPORTED;
+}
+
+OsKernelData->MemoryMap.Memory = MemoryMap;
+OsKernelData->MemoryMap.MapSize = MapSize / DescriptorSize;
+OsKernelData->MemoryMap.DescriptorSize = DescriptorSize;
+
+
+// Disable Watchdog Timer
+gBS->SetWatchdogTimer(0, 0, 0, NULL);
+// Exit boot services
+if(EFI_ERROR(gBS->ExitBootServices(ImageHandle, MapKey))) {
+	Print(L"Failed to exit boot services\n");
+	return EFI_UNSUPPORTED;
+}
 // بسم الله الرحمان الرحيم
-
+    // DrawText(L"Entering kernel...", 300, 430, 22, 0xFFFFFF);
     OsKernelEntry(OsKernelData);
     return EFI_SUCCESS;
 }

@@ -298,6 +298,7 @@ struct _LIST_ENTRY {
 /// Boolean true value.  UEFI Specification defines this value to be 1,
 /// but this form is more portable.
 ///
+#ifndef TRUE
 #define TRUE  ((BOOLEAN)(1==1))
 
 ///
@@ -305,7 +306,7 @@ struct _LIST_ENTRY {
 /// but this form is more portable.
 ///
 #define FALSE  ((BOOLEAN)(0==1))
-
+#endif
 ///
 /// NULL pointer (VOID *)
 ///
@@ -316,7 +317,9 @@ struct _LIST_ENTRY {
 #define NULL  __null
   #endif
 #else
+#ifndef NULL
 #define NULL  ((VOID *) 0)
+#endif
 #endif
 
 //
