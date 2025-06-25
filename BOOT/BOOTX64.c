@@ -53,9 +53,10 @@ void* EFIAPI OsAllocatePool(UINTN Size) {
     return Addr;
 }
 
-void* __cdecl UlibAlloc(UINT64 Size) {return OsAllocatePool(Size);}
-void __cdecl UlibFree(void* Address) {gBS->FreePool(Address);}
-
+void* __fastcall UlibAlloc(UINT64 Size) {return OsAllocatePool(Size);}
+void __fastcall UlibFree(void* Address) {gBS->FreePool(Address);}
+void* __fastcall UlibAllocPages(UINT64 NumPages) {return OsAllocatePages(NumPages);}
+void __fastcall UlibFreePages(void* Address, UINT64 NumPages) {gBS->FreePages((EFI_PHYSICAL_ADDRESS)Address, NumPages);}
 
 void* EFIAPI ReadFile(IN CHAR16* Path, OUT UINT64* FileSize) {
     EFI_HANDLE *handles;
@@ -185,7 +186,9 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
     Print(L"FileSize : %llu , First bytes : %x %x %x %x\n", FileSize, FontFile[0], FontFile[1], FontFile[2], FontFile[3]);
     USERMEMORYIF ULibIf = {
         UlibAlloc,
-        UlibFree
+        UlibAllocPages,
+        UlibFree,
+        UlibFreePages
     };
     UlibSetMemoryInterface(&ULibIf);
     if(!LoadFont(&StartupFont, FontFile, FileSize)){
@@ -198,8 +201,16 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
     }
     DrawText(L"BISMILLAH", 120, 120, 99, 0xFFFFFF);
 
-    DrawText(L"Operating System Booting...", 400, 400, 18, 0xaaaaaa);
+    DrawText(L"Operating System Booting...", 300, 400, 18, 0xaaaaaa);
     
-    while(1);
+    void* KernelFile = ReadFile(L"\\System\\OSKERNEL.EXE", &FileSize);
+    OsKernelData->Image = LoadImage(KernelFile, FileSize, NULL);
+    Print(L"KIMG %lx BASE %lx ENTRY_POINT %lx File %lx File Size %lx , First bytes %x %x %x %x\n", OsKernelData->Image, OsKernelData->Image->Base, OsKernelData->Image->EntryPoint, KernelFile, FileSize);
+    OSKERNELENTRY OsKernelEntry = (OSKERNELENTRY)OsKernelData->Image->EntryPoint;
+
+
+// بسم الله الرحمان الرحيم
+
+    OsKernelEntry(OsKernelData);
     return EFI_SUCCESS;
 }
