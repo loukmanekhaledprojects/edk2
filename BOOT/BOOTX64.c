@@ -6,9 +6,12 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <user.h>
 #include <kernel.h>
+#include <user/mem.h>
+
 #include <Library/debuglib.h>
 #include <Protocol/SimpleFileSystem.h>
 #include <Guid/FileInfo.h>
+#include <Library/BaseMemoryLib.h>
 OSKERNELDATA* OsKernelData;
 EFI_STATUS Status;
     FONT StartupFont = {0};
@@ -142,15 +145,18 @@ void BlitGrayBitmapToFramebuffer(
     }
 }
 
-void DrawText(UINT16* Text, UINT32 DestX, UINT32 DestY, UINT32 FontSize, UINT32 ForegroundColor) {
+void DrawText(UINT16* Text, UINT32 DestX, UINT32 DestY, UINT32 FontSize, UINT32 FontWeight, UINT32 ForegroundColor) {
     UINTN Len = StrLen(Text);
-    SetFontSize(&StartupFont, FontSize);
+    if(!FontSetSize(&StartupFont, FontSize) || !FontSetWeight(&StartupFont, FontWeight)) {
+        Print(L"Could not use the startup font.\n");
+            gBS->Exit(gImageHandle, EFI_LOAD_ERROR, 0, NULL);
+    }
     signed long x = DestX;
     UINT16 PrevChar = 0;
     FONT_GLYPH_DATA GlyphData = {0};
 
     for (UINT32 i = 0; i < (UINT32)Len; i++) {
-        if (!LoadGlyf(&StartupFont, &GlyphData, Text[i], PrevChar)) {
+        if (!FontRenderGlyf(&StartupFont, &GlyphData, Text[i], PrevChar)) {
             Print(L"Failed to load glyph bitmap.\n");
             gBS->Exit(gImageHandle, EFI_LOAD_ERROR, 0, NULL);
         }
@@ -175,6 +181,12 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
     gBS = SystemTable->BootServices;
     gImageHandle = ImageHandle;
     Print(L"UEFI Bootloader Startup\n");
+    // Allocate Null page to prevent errors
+    EFI_PHYSICAL_ADDRESS NullPg = 0;
+    if(!EFI_ERROR(gBS->AllocatePages(AllocateAddress, EfiLoaderData, 1, &NullPg))) {
+        Print(L"NULL Page Reserved successfully\n");
+    }
+    
     OsKernelData = OsAllocatePages(PSZ_OSKERNELDATA);
     
     Print(L"Os Kernel Data  :0x%lx \n", OsKernelData);
@@ -191,7 +203,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
         UlibFreePages
     };
     UlibSetMemoryInterface(&ULibIf);
-    if(!LoadFont(&StartupFont, FontFile, FileSize)){
+    if(!FontLoad(&StartupFont, FontFile, FileSize)){
         
         Print(L"Failed to load startup font.\n");
         return EFI_LOAD_ERROR;
@@ -199,13 +211,13 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
     for(int i =0;i<OsKernelData->BootFb.Size / 4;i++) {
         OsKernelData->BootFb.BaseAddress[i] = 0;
     }
-    DrawText(L"BISMILLAH", 120, 120, 99, 0xFFFFFF);
+    DrawText(L"BISMILLAH", 20, 20, 99, 900, 0xFFFFFF);
 
-    DrawText(L"Operating System Booting...", 300, 400, 22, 0xFFFFFF);
+    DrawText(L"Operating System Booting...", 300, 400, 22, 500, 0xFFFFFF);
+    DrawText(L"Welcome To the Operating System", 100, 300, 64, 200, 0xFFFFFF);
     
     void* KernelFile = ReadFile(L"\\System\\OSKERNEL.EXE", &FileSize);
     OsKernelData->Image = LoadImage(KernelFile, FileSize, NULL);
-    Print(L"KIMG %lx BASE %lx ENTRY_POINT %lx File %lx File Size %lx , First bytes %x %x %x %x\n", OsKernelData->Image, OsKernelData->Image->Base, OsKernelData->Image->EntryPoint, KernelFile, FileSize);
     OSKERNELENTRY OsKernelEntry = (OSKERNELENTRY)OsKernelData->Image->EntryPoint;
 
 // Get the memory map
@@ -219,10 +231,28 @@ if(Status != EFI_BUFFER_TOO_SMALL) {
 }
 MapSize += 3 * DescriptorSize;
 gBS->AllocatePool(EfiLoaderData, MapSize, (void**)&MemoryMap);
-
+SetMem(MemoryMap, MapSize, 0);
+PMEMTBL* MemTbl = OsAllocatePool(sizeof(PMEMTBL) + (MapSize/DescriptorSize) * sizeof(BLOCK));
+MemInitTbl(MemTbl);
 if(EFI_ERROR(gBS->GetMemoryMap(&MapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion))) {
 	Print(L"Failed to get memory map\n");
 	return EFI_UNSUPPORTED;
+}
+
+// Blocks passed to the kernel
+BLOCK* KBlock = (BLOCK*)(MemTbl + 1);
+
+UINT64 Total = 0;
+for(UINTN i = 0;i<MapSize/DescriptorSize;i++) {
+    EFI_MEMORY_DESCRIPTOR* Block = (EFI_MEMORY_DESCRIPTOR*)((char*)MemoryMap + i*DescriptorSize);
+    if(Block->Type == EfiConventionalMemory) {
+        Total+=Block->NumberOfPages;
+        
+        KBlock->Size = Block->NumberOfPages;
+        KBlock->Start = Block->PhysicalStart >> 12;
+        MemAddBlock(MemTbl, KBlock);
+        KBlock++;
+    }
 }
 
 OsKernelData->MemoryMap.Memory = MemoryMap;
