@@ -1,23 +1,12 @@
 // بسم الله الرحمان الرحيم
+#include <bootx64.h>
 
-
-#include <Uefi.h>
-#include <Library/UefiLib.h>
-#include <Library/UefiBootServicesTableLib.h>
-#include <user.h>
-#include <kernel.h>
-#include <user/mem.h>
-
-#include <Library/debuglib.h>
-#include <Protocol/SimpleFileSystem.h>
-#include <Guid/FileInfo.h>
-#include <Library/BaseMemoryLib.h>
-OSKERNELDATA* OsKernelData;
-EFI_STATUS Status;
-    FONT StartupFont = {0};
+OSKERNELDATA* OsKernelData = NULL;
+EFI_STATUS Status = EFI_SUCCESS;
+FONT StartupFont = {0};
 
 #define EASSERT(__f, errmsg) if(EFI_ERROR(Status = __f)) {Print(L"Cannot continue the boot process.\n%s STATUS : %lx\n", errmsg, Status); gBS->Exit(gImageHandle, 1, 0, NULL);}
-
+EFI_GRAPHICS_OUTPUT_PROTOCOL* Gop;
 void EFIAPI LocateBootFb() {
 	EFI_GRAPHICS_OUTPUT_PROTOCOL* GraphicsProtocol;
 	// Check for G.O.P Support
@@ -35,12 +24,12 @@ void EFIAPI LocateBootFb() {
 			gBS->Exit(gImageHandle, EFI_UNSUPPORTED, 0, NULL);
 		}
 	}
-
 	OsKernelData->BootFb.BaseAddress = (void*)GraphicsProtocol->Mode->FrameBufferBase;
 	OsKernelData->BootFb.Size = GraphicsProtocol->Mode->FrameBufferSize;
 	OsKernelData->BootFb.hRes = ModeInfo->HorizontalResolution;
 	OsKernelData->BootFb.vRes = ModeInfo->VerticalResolution;
 	OsKernelData->BootFb.Pitch = ModeInfo->PixelsPerScanLine * 4;
+    Gop = GraphicsProtocol;
 }
 
 void* EFIAPI OsAllocatePages(UINTN NumPages) {
@@ -174,6 +163,33 @@ void DrawText(UINT16* Text, UINT32 DestX, UINT32 DestY, UINT32 FontSize, UINT32 
     }
 }
 
+void ImageResize(
+    IMAGERENDER* Imgr,
+    UINT32 dst_w, UINT32 dst_h)
+{
+    UINT8* src_pixels =Imgr->PixelBuffer;
+    UINT32 src_w = Imgr->Width;
+    UINT32 src_h = Imgr->Height;
+    UINT8* dst_pixels = OsAllocatePool(dst_w * dst_h * 4);
+    
+    for (UINT32 y = 0; y < dst_h; y++) {
+        UINT32 src_y = y * src_h / dst_h;
+        for (UINT32 x = 0; x < dst_w; x++) {
+            UINT32 src_x = x * src_w / dst_w;
+            // Copy pixel (4 bytes BGRA)
+            UINT8* src_px = &src_pixels[(src_y * src_w + src_x) * 4];
+            UINT8* dst_px = &dst_pixels[(y * dst_w + x) * 4];
+            dst_px[0] = src_px[0];
+            dst_px[1] = src_px[1];
+            dst_px[2] = src_px[2];
+            dst_px[3] = src_px[3];
+        }
+    }
+    UlibFree(src_pixels);
+    Imgr->PixelBuffer = dst_pixels;
+    Imgr->Width = dst_w;
+    Imgr->Height = dst_h;
+}
 
 EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* SystemTable) {
 
@@ -188,14 +204,6 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
     }
     
     OsKernelData = OsAllocatePages(PSZ_OSKERNELDATA);
-    
-    Print(L"Os Kernel Data  :0x%lx \n", OsKernelData);
-    LocateBootFb();
-    
-    
-    UINT64 FileSize;
-    UINT32* FontFile = ReadFile(L"\\Fonts\\Inter.ttf", &FileSize);
-    Print(L"FileSize : %llu , First bytes : %x %x %x %x\n", FileSize, FontFile[0], FontFile[1], FontFile[2], FontFile[3]);
     USERMEMORYIF ULibIf = {
         UlibAlloc,
         UlibAllocPages,
@@ -203,6 +211,14 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
         UlibFreePages
     };
     UlibSetMemoryInterface(&ULibIf);
+    
+    Print(L"Os Kernel Data  :0x%lx \n", OsKernelData);
+    LocateBootFb();
+    
+    UINT64 FileSize;
+
+    UINT32* FontFile = ReadFile(L"\\Fonts\\Inter.ttf", &FileSize);
+    Print(L"FileSize : %llu , First bytes : %x %x %x %x\n", FileSize, FontFile[0], FontFile[1], FontFile[2], FontFile[3]);
     if(!FontLoad(&StartupFont, FontFile, FileSize)){
         
         Print(L"Failed to load startup font.\n");
@@ -211,11 +227,24 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE* Syste
     for(int i =0;i<OsKernelData->BootFb.Size / 4;i++) {
         OsKernelData->BootFb.BaseAddress[i] = 0;
     }
+    
+        // IMAGERENDER Imgr;
+// void* ImageFile = ReadFile(L"\\System\\wallpaper.jpg", &FileSize);
+
+
+// if(!ImageRender(ImageFile, FileSize, &Imgr)) {
+//     Print(L"Failed to render wallpaper\n");
+//     return EFI_LOAD_ERROR;
+// }
+// ImageResize(&Imgr, OsKernelData->BootFb.hRes, OsKernelData->BootFb.vRes);
+// Gop->Blt(Gop, Imgr.PixelBuffer, EfiBltBufferToVideo, 0, 0, 0, 0, Imgr.Width, Imgr.Height, 0);
+
+    
     DrawText(L"BISMILLAH", 20, 20, 99, 900, 0xFFFFFF);
 
     DrawText(L"Operating System Booting...", 300, 400, 22, 500, 0xFFFFFF);
-    DrawText(L"Welcome To the Operating System", 100, 300, 64, 200, 0xFFFFFF);
-    
+    // TestUi();
+    DrawText(L"Welcome To the Operating System", 100, 300, 40, 200, 0xFFFFFF);
     void* KernelFile = ReadFile(L"\\System\\OSKERNEL.EXE", &FileSize);
     OsKernelData->Image = LoadImage(KernelFile, FileSize, NULL);
     OSKERNELENTRY OsKernelEntry = (OSKERNELENTRY)OsKernelData->Image->EntryPoint;
@@ -232,43 +261,57 @@ if(Status != EFI_BUFFER_TOO_SMALL) {
 MapSize += 3 * DescriptorSize;
 gBS->AllocatePool(EfiLoaderData, MapSize, (void**)&MemoryMap);
 SetMem(MemoryMap, MapSize, 0);
-PMEMTBL* MemTbl = OsAllocatePool(sizeof(PMEMTBL) + (MapSize/DescriptorSize) * sizeof(BLOCK));
-MemInitTbl(MemTbl);
+
+
+MEMORYMGRTBL* Mmt = OsAllocatePages(MAJOR(sizeof(MEMORYMGRTBL) + (MapSize/DescriptorSize) * sizeof(BLOCK), 0x1000) >> 12);
 if(EFI_ERROR(gBS->GetMemoryMap(&MapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion))) {
 	Print(L"Failed to get memory map\n");
 	return EFI_UNSUPPORTED;
 }
 
 // Blocks passed to the kernel
-BLOCK* KBlock = (BLOCK*)(MemTbl + 1);
+
+while(1) {
+    Print(L"MMTInit...\n");
+    MEMORY_HEADER* KBlock = (MEMORY_HEADER*)(Mmt + 1);
+MMTInit(Mmt, 0x1000);
 
 UINT64 Total = 0;
 for(UINTN i = 0;i<MapSize/DescriptorSize;i++) {
     EFI_MEMORY_DESCRIPTOR* Block = (EFI_MEMORY_DESCRIPTOR*)((char*)MemoryMap + i*DescriptorSize);
     if(Block->Type == EfiConventionalMemory) {
-        Total+=Block->NumberOfPages;
         
-        KBlock->Size = Block->NumberOfPages;
-        KBlock->Start = Block->PhysicalStart >> 12;
-        MemAddBlock(MemTbl, KBlock);
+        MMTCreateRegion(Mmt, KBlock, (void*)Block->PhysicalStart, Block->NumberOfPages);
+        Total+=KBlock->Size;
         KBlock++;
     }
 }
 
-OsKernelData->MemoryMap.Memory = MemoryMap;
-OsKernelData->MemoryMap.MapSize = MapSize / DescriptorSize;
-OsKernelData->MemoryMap.DescriptorSize = DescriptorSize;
-
-
-// Disable Watchdog Timer
-gBS->SetWatchdogTimer(0, 0, 0, NULL);
-// Exit boot services
-if(EFI_ERROR(gBS->ExitBootServices(ImageHandle, MapKey))) {
-	Print(L"Failed to exit boot services\n");
-	return EFI_UNSUPPORTED;
+// Simple test
+MEMORY_HEADER _mhdr;
+UINT64 Allocations = 0;
+Print(L"Starting stress test, Total pages %lx\n", Total);
+for(;MMTRequestMemory(Mmt, &_mhdr, 1);Allocations++);
+Print(L"Allocations %dK Allocation : Size %d MB\n",Allocations/(1000), (Allocations * 0x1000) >> 20);
 }
-// بسم الله الرحمان الرحيم
-    // DrawText(L"Entering kernel...", 300, 430, 22, 0xFFFFFF);
-    OsKernelEntry(OsKernelData);
-    return EFI_SUCCESS;
+NvGpuTest();
+
+// // Svga3dSetup();
+     OsKernelEntry(OsKernelData); // Temporary HLT
+// OsKernelData->MemoryMap.Memory = MemoryMap;
+// OsKernelData->MemoryMap.MapSize = MapSize / DescriptorSize;
+// OsKernelData->MemoryMap.DescriptorSize = DescriptorSize;
+
+
+// // Disable Watchdog Timer
+// gBS->SetWatchdogTimer(0, 0, 0, NULL);
+// // Exit boot services
+// if(EFI_ERROR(gBS->ExitBootServices(ImageHandle, MapKey))) {
+// 	Print(L"Failed to exit boot services\n");
+// 	return EFI_UNSUPPORTED;
+// }
+// // بسم الله الرحمان الرحيم
+//     // DrawText(L"Entering kernel...", 300, 430, 22, 0xFFFFFF);
+//     OsKernelEntry(OsKernelData);
+//     return EFI_SUCCESS;
 }

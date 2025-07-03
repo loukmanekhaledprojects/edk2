@@ -13,9 +13,12 @@
 
 [Sources]
   BOOTX64.c
+  svga3d.c
+  testui.c
+  nvidiatest.c
   ..\..\lib\userstaticlib.lib
 [BuildOptions.X64.VS2022]
-  RELEASE_VS2022_X64_CC_FLAGS   = /I"C:\Users\loukd\Desktop\OS\inc"
+  RELEASE_VS2022_X64_CC_FLAGS   = /I"C:\Users\loukd\Desktop\OS\inc" /wd4201 /wd4702
   RELEASE_VS2022_X64_DLINK_FLAGS = /NODEFAULTLIB
 
 [Packages]
@@ -27,9 +30,11 @@
 
 [Guids]
   gEfiFileInfoGuid
+  gEfiEventVirtualAddressChangeGuid
 [Ppis]
 
 [Protocols]
+  gEfiPciIoProtocolGuid
 
 [FeaturePcd]
 
