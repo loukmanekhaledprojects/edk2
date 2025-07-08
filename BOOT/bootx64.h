@@ -6,14 +6,15 @@
 #include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <kernel.h>
-#include <user/mem.h>
 #include <user.h>
+#include <user/mem.h>
+#include <user/vm.h>
+#include <libkernel/page.h>
 
 #include <Library/debuglib.h>
 #include <Protocol/SimpleFileSystem.h>
 #include <Guid/FileInfo.h>
 #include <Library/BaseMemoryLib.h>
-
 OSKERNELDATA* OsKernelData;
 
 void TestUi();
