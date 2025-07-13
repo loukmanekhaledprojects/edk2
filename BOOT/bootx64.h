@@ -5,14 +5,14 @@
 #include <Guid/EventGroup.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
-#include <kernel.h>
+#include <typedef.h>
 #include <user.h>
+void* USERAPI TempPAlloc(UINT64 l);
+#define PageMapAlloc(__x) TempPAlloc(__x)
+#include <kernel.h>
 #include <user/mem.h>
 #include <user/vm.h>
 #include <kernel/kv.h>
-void* USERAPI TempPAlloc(UINT64 l);
-#define PageMapAlloc(__x) TempPAlloc(__x)
-#include <kernel/mem/page.h>
 
 #include <Library/debuglib.h>
 #include <Protocol/SimpleFileSystem.h>

@@ -157,16 +157,10 @@ SimpleConOut(L"BISMILLAH");
 
 SimpleConOut(L"Starting Kernel... Entry Point %lx", OsKernelEntry);
 OsKernelData->SimpleConOut(L"Test");
-SvgaInit();
+// SvgaInit();
 // SimpleConOut(L"Enabling VMX");
 // // VMX Is required
-// Status = VmxEnable();
-// if(Status == 2) SimpleConOut(L"VMX Is not supported by the host CPU.");
-// else if(Status == 3) SimpleConOut(L"VMX Is disabled in BIOS");
-// else if(Status == 0) SimpleConOut(L"VMX Enabled");
-// MEMORY_HEADER _mhdr;
-// void* VmxMem = MMTRequestMemory(Mmt, &_mhdr, 0x10000);
-// VmStart(VmxMem, SimpleConOut);
+
 // بسم الله الرحمان الرحيم
     // DrawText(L"Entering kernel...", 300, 430, 22, 0xFFFFFF);
     OsKernelEntry(OsKernelData);
