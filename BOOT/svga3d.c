@@ -1,11 +1,11 @@
 #include <Uefi.h>
 #include <svga3d_reg.h>
-
+VMSVGA _Svga = {0};
+VMSVGA* Svga = &_Svga;
 
 #define PCI_BAR(__x) (0x10 + (__x * 4))
 // int _fltused = 1;
 void USERAPI SvgaGetMode(
-    VMSVGA *Svga,
     UINT32 *HorizontalResolution,
     UINT32 *VerticalResolution,
     UINT32 *Pitch,
@@ -15,10 +15,76 @@ void USERAPI SvgaGetMode(
     *VerticalResolution = SvgaRead(Svga, SVGA_REG_HEIGHT);
     *Pitch = SvgaRead(Svga, SVGA_REG_BYTES_PER_LINE);
     *BitsPerPixel = SvgaRead(Svga, SVGA_REG_BITS_PER_PIXEL);
+
+
+
+    UINT32* Old = OsKernelData->BootFb.BaseAddress;
+    OsKernelData->BootFb.BaseAddress = (UINT32*)(UINT64)SvgaRead(Svga, SVGA_REG_FB_START);
+    OsKernelData->BootFb.Size = SvgaRead(Svga, SVGA_REG_FB_SIZE);
+    if(!OsKernelData->BootFb.BaseAddress) OsKernelData->BootFb.BaseAddress = Old;
+    
+    
+    
+    if(Old != OsKernelData->BootFb.BaseAddress){
+        kvMap((UINT64)OsKernelData->BootFb.BaseAddress, (UINT64)OsKernelData->BootFb.BaseAddress, MAJOR(OsKernelData->BootFb.Size, 0x1000) >> 12, PAGE_PRESENT | PAGE_RW);
+    } 
+
+
+    OsKernelData->BootFb.hRes = *HorizontalResolution;
+    OsKernelData->BootFb.vRes = *VerticalResolution;
+    OsKernelData->BootFb.Pitch = *Pitch;
+
+
+}
+
+
+typedef struct {
+    UINT32 type;
+    UINT32 format;
+    UINT32 usage;
+    UINT32 width;
+    UINT32 height;
+    UINT32 depth;
+    UINT32 mipLevels;
+    UINT32 multisample;
+    UINT32 padding;
+} SVGA3dSurfaceDefineV2Payload;
+
+typedef struct {
+    UINT32 cmd;
+    UINT32 surfaceId;
+    UINT64 guestAddress;
+    UINT32 size;
+    UINT32 padding;
+} SVGA3dSurfaceDMA;
+
+typedef struct {
+    UINT32 x, y, width, height;
+    UINT32 frontBufferMask;
+    UINT32 backBufferMask;
+} SVGA3dPresentPayload;
+
+
+__declspec(align(0x1000)) UINT32 surfaceMem[1920*1080]={0};
+#define fifo(__x) SvgaFifoPush(Svga, __x)
+#define StartCmd(name, cmd) {fifo(name);fifo(sizeof(cmd) + 8);}
+void SvgaDrawRect(UINT32 color, UINT32 x, UINT32 y, UINT32 width, UINT32 height) {
+    SVGAWAIT(Svga);
+    fifo(SVGA_CMD_RECT_FILL);
+    fifo(color);
+    fifo(x);
+    fifo(y);
+    fifo(width);
+    fifo(height);
+    fifo(SVGA_CMD_UPDATE);
+    fifo(x);
+    fifo(y);
+    fifo(width);
+    fifo(height);
+    SvgaFifoSync(Svga);
 }
 
 void USERAPI SvgaSetMode(
-    VMSVGA *Svga,
     UINT32 HorizontalResolution,
     UINT32 VerticalResolution,
     UINT32 BitsPerPixel)
@@ -34,171 +100,68 @@ void USERAPI SvgaSetMode(
     SVGAWAIT(Svga);
 }
 
-void SvgaDrawRect(VMSVGA* Svga) {
-    SVGAWAIT(Svga);
-    volatile UINT32 NextCmd = Svga->FifoMem[SVGA_FIFO_NEXT_CMD] >> 2;
-    volatile UINT32* Cmd = Svga->FifoMem + NextCmd;
-    Cmd[0] = SVGA_CMD_RECT_FILL;
-    Cmd[1] = 0xFFFFFFFF;
-    Cmd[2] = 50;
-    Cmd[3] = 50;
-    Cmd[4] = 150;
-    Cmd[5] = 150;
-    Cmd[6] = SVGA_CMD_UPDATE;
-    SVGAFifoCmdUpdate* CmdUpdate = (SVGAFifoCmdUpdate*)(Svga->FifoMem + 7);
-    CmdUpdate->x = 50;
-    CmdUpdate->y = 50;
-    CmdUpdate->width = 250;
-    CmdUpdate->height = 250;
-    Svga->FifoMem[SVGA_FIFO_NEXT_CMD] += 44;
+#define SVGA_CMD_UPDATE_CURSOR           (SVGA_CMD_DEFINE_ALPHA_CURSOR + 1)
+#define SVGA_CMD_MOVE_CURSOR             (SVGA_CMD_DEFINE_ALPHA_CURSOR + 2)
+#define SVGA_CMD_SHOW_CURSOR             (SVGA_CMD_DEFINE_ALPHA_CURSOR + 3)
 
-
-    SvgaFifoSync(Svga);
+void SvgaEnable3d() {
+SvgaDrawRect(0xFFFFFFFF, 20, 20, 100, 100);
+SvgaDrawRect(0xFF00FF00, 400, 400, 200, 80);
 }
 
-void SvgaEnable3d(VMSVGA* Svga) {
 
-    SvgaDrawRect(Svga);
 
-}
-VOID EFIAPI OnVirtualAddressChange(IN EFI_EVENT Event, IN VOID *Context) {
-    VMSVGA *Svga = (VMSVGA*)Context;
-    gST->RuntimeServices->ConvertPointer(0, (VOID**)&Svga->FifoMem);
-}
-EFI_STATUS MapFifoMemory(VMSVGA *Svga) {
-    EFI_STATUS Status;
-    EFI_PHYSICAL_ADDRESS fifoPhys;
-    UINTN fifoSize;
-    EFI_PHYSICAL_ADDRESS deviceAddr;
+void SvgaInit() {
 
-    // Read FIFO BAR physical address from PCI config
-    Status = Svga->Pci->Pci.Read(
-        Svga->Pci,
-        EfiPciIoWidthUint32,
-        PCI_BAR(2), // Usually BAR2 is FIFO
-        1,
-        &fifoPhys
-    );
-    if (EFI_ERROR(Status)) {
-        Print(L"Failed to read PCI BAR2: %r\n", Status);
-        return Status;
-    }
+    if(!Svga->FifoMem) return;
+    kvMap((UINT64)Svga->FifoMem, (UINT64)Svga->FifoMem, MAJOR(Svga->FifoSize, 0x1000) >> 12, PAGE_PRESENT | PAGE_RW);
+    kvMap((UINT64)Svga->FbMem, (UINT64)Svga->FbMem, MAJOR(Svga->FbSize, 0x1000) >> 12, PAGE_PRESENT | PAGE_RW);
+    OsKernelData->BootFb.BaseAddress = Svga->FbMem;
+    OsKernelData->BootFb.Size = Svga->FbSize;
 
-    fifoPhys = fifoPhys & ~0xF;  // Mask low bits to get base address
-    fifoSize = Svga->FifoSize;
-
-    // Map FIFO BAR into CPU address space
-    Status = Svga->Pci->Map(
-        Svga->Pci,
-        EfiPciIoOperationBusMasterCommonBuffer,  // or BusMasterRead/Write depending on usage
-        (VOID*)(UINTN)fifoPhys,                   // HostAddress (physical BAR base)
-        &fifoSize,
-        &deviceAddr,
-        &Svga->FifoMapping
-    );
-    if (EFI_ERROR(Status)) {
-        Print(L"Failed to map FIFO BAR: %r\n", Status);
-        return Status;
-    }
-
-    Svga->FifoMem = (VOID*)(UINTN)deviceAddr;
-    Print(L"FIFO mapped at virtual address %p\n", Svga->FifoMem);
-
-    // Register for virtual address change event to convert pointer after ExitBootServices
-    Status = gBS->CreateEventEx(
-        EVT_NOTIFY_SIGNAL,
-        TPL_NOTIFY,
-        OnVirtualAddressChange,
-        Svga,
-        &gEfiEventVirtualAddressChangeGuid,
-        &Svga->VirtualAddressChangeEvent
-    );
-    if (EFI_ERROR(Status)) {
-        Print(L"Failed to create virtual address change event: %r\n", Status);
-        // Cleanup mapping on failure
-        Svga->Pci->Unmap(Svga->Pci, Svga->FifoMapping);
-        return Status;
-    }
-
-    return EFI_SUCCESS;
-}
-
-void SvgaInit(EFI_PCI_IO_PROTOCOL* Pci) {
-    VMSVGA* Svga;
-    gBS->AllocatePool(EfiLoaderData, sizeof(VMSVGA), &Svga);
-    Pci->Pci.Read(Pci, EfiPciIoWidthUint32, PCI_BAR(0), 1, &Svga->IoBase);
-    Svga->IoBase = MASKPCIBASE(Svga->IoBase);
-    Svga->VramSize = SvgaRead(Svga, SVGA_REG_VRAM_SIZE);
-        Svga->FbSize = SvgaRead(Svga, SVGA_REG_FB_SIZE);
-        Svga->FifoSize = SvgaRead(Svga, SVGA_REG_MEM_SIZE);
-    Svga->Pci = Pci;
-
-    EFI_PHYSICAL_ADDRESS fifoPhys;
-
-Pci->Pci.Read(Pci, EfiPciIoWidthUint32, PCI_BAR(2), 1, &fifoPhys);
-fifoPhys = MASKPCIBASE(fifoPhys);
-Svga->FifoMem = (UINT32*)fifoPhys;
-if(EFI_ERROR(MapFifoMemory(Svga))) return;
-        Print(L"VMSVGA Size VRAM %x FB %x FIFO %x FIFOMEM %x", Svga->VramSize, Svga->FbSize, Svga->FifoSize, Svga->FifoMem);
+        SimpleConOut(L"VMSVGA Size VRAM %x FB %x FIFO %x FIFOMEM %x", Svga->VramSize, Svga->FbSize, Svga->FifoSize, Svga->FifoMem);
     // Pci->Pci.Read(Pci, EfiPciIoWidthUint32, PCI_BAR(2), 1, &Svga->FifoMem);
 
     UINT32 id = SvgaRead(Svga, SVGA_REG_ID);
-    Print(L"SVGA ID %x\n", id);
-Print(L"Found SVGA%d Device, IO %x\n", id & 0xFF, Svga->IoBase);
-    
-// Init FIFO
-
-    SvgaFifoWrite(Svga, SVGA_FIFO_MIN, SvgaFifoRead(Svga, SVGA_FIFO_NUM_REGS) * 4);
-    SvgaFifoWrite(Svga, SVGA_FIFO_MAX, Svga->FifoSize);
-    SvgaFifoWrite(Svga, SVGA_FIFO_NEXT_CMD, SvgaFifoRead(Svga, SVGA_FIFO_MIN));
-    SvgaFifoWrite(Svga, SVGA_FIFO_STOP, SvgaFifoRead(Svga, SVGA_FIFO_MIN));
+    SimpleConOut(L"SVGA ID %x", id);
+SimpleConOut(L"Found SVGA%d Device, IO %x", id & 0xFF, Svga->IoBase);
 
 
-    /*
-     * Prep work for 3D version negotiation. See SVGA3D_Init for
-     * details, but we have to give the host our 3D protocol version
-     * before enabling the FIFO.
-     */
 
-    if (SvgaFifoCap(Svga, SVGA_CAP_EXTENDED_FIFO) &&
+Svga->Capabilities = SvgaRead(Svga, SVGA_REG_CAPABILITIES);
+
+
+SVGAWAIT(Svga);
+        if (SvgaFifoCap(Svga, SVGA_CAP_EXTENDED_FIFO) &&
         SvgaFifoRegValid(Svga, SVGA_FIFO_GUEST_3D_HWVERSION))
-    {
-        SvgaFifoWrite(Svga, SVGA_FIFO_GUEST_3D_HWVERSION, SVGA3D_HWVERSION_CURRENT);
-    }
-
-    UINT32 caps = SvgaRead(Svga, SVGA_REG_CAPABILITIES);
-Print(L"SVGA Caps: 0x%x\n", caps);
-
-    if(!(caps & SVGA_CAP_3D)) {
-        Print(L"SVGA Device does not support 3D Acceleration.\n");
-    }
-
-    /*
-     * Enable the SVGA device and FIFO.
-     */
-
-    SvgaWrite(Svga, SVGA_REG_ENABLE, TRUE);
+        {
+                    SvgaFifoWrite(Svga, SVGA_FIFO_GUEST_3D_HWVERSION, SVGA3D_HWVERSION_CURRENT);
+                }
     
-    SvgaWrite(Svga, SVGA_REG_CONFIG_DONE, TRUE);
+        SimpleConOut(L"SVGA Caps: 0x%x", SvgaRead(Svga, SVGA_REG_CAPABILITIES));
     
-    SvgaGetMode(Svga, &Svga->Width, &Svga->Height, &Svga->Pitch, &Svga->Bpp);
+        if(!(Svga->Capabilities & SVGA_CAP_3D)) {
+                SimpleConOut(L"SVGA Device does not support 3D Acceleration.");
+            }
 
-    Print(L"Current mode %dx%d (%d BPP) Pitch : %d",
-                Svga->Width, Svga->Height, Svga->Bpp, Svga->Pitch);
+            Svga->FifoNextCmd = (SVGA_FIFO_NUM_REGS ) * 4;
+            SvgaFifoWrite(Svga, SVGA_FIFO_MIN, Svga->FifoNextCmd);
 
-    SvgaSetMode(Svga, 720, 720, 32);
-    SvgaGetMode(Svga, &Svga->Width, &Svga->Height, &Svga->Pitch, &Svga->Bpp);
-
-        Print(L"New mode %dx%d (%d BPP) Pitch : %d",
-                Svga->Width, Svga->Height, Svga->Bpp, Svga->Pitch);
-
+            SvgaFifoWrite(Svga, SVGA_FIFO_MAX, Svga->FifoSize);
+            SvgaFifoWrite(Svga, SVGA_FIFO_NEXT_CMD, Svga->FifoNextCmd);
+            SvgaFifoWrite(Svga, SVGA_FIFO_STOP, Svga->FifoNextCmd);
+        SvgaWrite(Svga, SVGA_REG_ENABLE, 1);
+        SvgaWrite(Svga, SVGA_REG_CONFIG_DONE, 1);
+        SvgaGetMode(&Svga->Width, &Svga->Height, &Svga->Pitch, &Svga->Bpp);
+        SvgaSetMode(1280, 720, 32);
+        SvgaGetMode(&Svga->Width, &Svga->Height, &Svga->Pitch, &Svga->Bpp);
+   SimpleConOut(L"New mode %dx%d (%d BPP) Pitch : %d",
+    Svga->Width, Svga->Height, Svga->Bpp, Svga->Pitch);
+    
     // Simple test
-    
-        SvgaEnable3d(Svga);
+        SvgaEnable3d();
 }
-
 void Svga3dSetup() {
-    Print(L"Looking for SVGA3D\n");
 
     EFI_HANDLE *handles;
 UINTN handleCount;
@@ -221,7 +184,20 @@ for (UINTN i = 0; i < handleCount; i++) {
     pciIo->Pci.Read(pciIo, EfiPciIoWidthUint16, PCI_VENDOR_ID_OFFSET, 1, &vendorId);
     pciIo->Pci.Read(pciIo, EfiPciIoWidthUint16, PCI_DEVICE_ID_OFFSET, 1, &deviceId);
     if (vendorId == PCI_VENDOR_ID_VMWARE && (deviceId == PCI_DEVICE_ID_VMWARE_SVGA2 || deviceId == 0x0407)) {
-            SvgaInit(pciIo);
+            pciIo->Pci.Read(pciIo, EfiPciIoWidthUint32, PCI_BAR(0), 1, &Svga->IoBase);
+            Svga->IoBase = MASKPCIBASE(Svga->IoBase);
+            Svga->VramSize = SvgaRead(Svga, SVGA_REG_VRAM_SIZE);
+            Svga->FbSize = SvgaRead(Svga, SVGA_REG_FB_SIZE);
+            Svga->FifoSize = SvgaRead(Svga, SVGA_REG_MEM_SIZE);    
+        EFI_PHYSICAL_ADDRESS Phys;
+        pciIo->Pci.Read(pciIo, EfiPciIoWidthUint32, PCI_BAR(1), 1, &Phys);
+        Phys = MASKPCIBASE(Phys);
+        Svga->FbMem = (UINT32*)Phys;
+        pciIo->Pci.Read(pciIo, EfiPciIoWidthUint32, PCI_BAR(2), 1, &Phys);
+        Phys = MASKPCIBASE(Phys);
+        Svga->FifoMem = (UINT32*)Phys;
+        Print(L"Found SVGA Virtual GPU\n");
+        break;
     }
 }
 }

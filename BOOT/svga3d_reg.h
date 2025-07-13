@@ -1901,7 +1901,7 @@ typedef struct {
     EFI_PCI_IO_PROTOCOL* Pci;
     UINT32 VersionId;
     UINT16 IoBase;
-    UINT8* FbMem;
+    UINT32* FbMem;
     UINT32 VramSize;
     UINT32 FbSize;
     UINT32 FifoSize;
@@ -1916,6 +1916,8 @@ typedef struct {
     EFI_PHYSICAL_ADDRESS FifoPhys;
     void* FifoMapping;
     EFI_EVENT VirtualAddressChangeEvent;
+    UINT32 surfaceIdCounter;
+    UINT32 FifoNextCmd;
 } VMSVGA;
 #define MASKPCIBASE(x) ((UINT64)(x) & ~((UINT64)0xF))
 
@@ -1975,15 +1977,12 @@ static inline void SvgaFifoPush(VMSVGA *Svga, UINT32 value)
 
 }
 
+#define SVGAWAIT(Svga) while (SvgaRead(Svga, SVGA_REG_BUSY)) _mm_pause();
 void SvgaFifoSync(VMSVGA* Svga) {
-   
     SvgaWrite(Svga, SVGA_REG_SYNC, 1);
-    while (SvgaRead(Svga, SVGA_REG_BUSY))
-        ; // wait until not busy
 }
 
 
-#define SVGAWAIT(Svga) while (SvgaRead(Svga, SVGA_REG_BUSY)) {}
 
 #define SVGA3D_SURFACE_USAGE_RENDERTARGET 0x2
 #define SVGA3D_SURFACE_2D 0

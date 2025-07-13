@@ -13,6 +13,11 @@
 
 [Sources]
   BOOTX64.c
+  bootmem.c
+  file.c
+  gop.c
+  conout.c
+  drivers.c
   svga3d.c
   testui.c
   nvidiatest.c
