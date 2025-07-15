@@ -48,11 +48,9 @@ UlibSetMemoryInterface(&ULibIf);
     
     void* KernelFile = ReadFile(L"\\System\\OSKERNEL.EXE", &FileSize);
     LargePgMap = 1;
-
-    OsKernelData->Image = LoadImage(KernelFile, FileSize, NULL);
-
-    if(!RelocateImage(OsKernelData->Image, (void*)0xFFFF800000000000)) {
-        Print(L"Error loading kernel, relocation failed.\n");
+    OsKernelData->Image.Base = (void*)0xFFFF800000000000;
+    if(LoadImage(&OsKernelData->Image, KernelFile, FileSize, NULL)) {
+        Print(L"Failed to load the kernel\n");
         return EFI_UNSUPPORTED;
     }
 
@@ -114,7 +112,7 @@ EFI_MEMORY_DESCRIPTOR* Block = (EFI_MEMORY_DESCRIPTOR*)((char*)MemoryMap + i*Des
 }
 
 
-    OSKERNELENTRY OsKernelEntry = (OSKERNELENTRY)OsKernelData->Image->EntryPoint;
+    OSKERNELENTRY OsKernelEntry = (OSKERNELENTRY)OsKernelData->Image.EntryPoint;
 
 
 // Blocks passed to the kernel
@@ -136,7 +134,7 @@ if(EFI_ERROR(gBS->ExitBootServices(ImageHandle, MapKey))) {
 }
 
 // Setup page table
-kvMap((UINT64)OsKernelData->Image->VaBase, 0xFFFF800000000000, (MAJOR(((UINT64)OsKernelData->Image->VaLimit - (UINT64)OsKernelData->Image->VaBase), 0x200000) >> 21) | PAGESZ_2MB, PAGE_PRESENT | PAGE_RW | PAGE_LARGE);
+kvMap((UINT64)OsKernelData->Image.VaBase, 0xFFFF800000000000, (MAJOR(((UINT64)OsKernelData->Image.VaLimit - (UINT64)OsKernelData->Image.VaBase), 0x200000) >> 21) | PAGESZ_2MB, PAGE_PRESENT | PAGE_RW | PAGE_LARGE);
 kvMap((UINT64)OsKernelData->BootFb.BaseAddress, (UINT64)OsKernelData->BootFb.BaseAddress, MAJOR(OsKernelData->BootFb.Size, 0x1000) >> 12, PAGE_PRESENT | PAGE_RW);
 for(UINTN i = 0;i<MapSize/DescriptorSize;i++) {
 EFI_MEMORY_DESCRIPTOR* Block = (EFI_MEMORY_DESCRIPTOR*)((char*)MemoryMap + i*DescriptorSize);

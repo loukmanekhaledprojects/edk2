@@ -11,7 +11,6 @@ void* USERAPI TempPAlloc(UINT64 l);
 #define PageMapAlloc(__x) TempPAlloc(__x)
 #include <kernel.h>
 #include <user/mem.h>
-#include <user/vm.h>
 #include <kernel/kv.h>
 
 #include <Library/debuglib.h>
