@@ -1,6 +1,8 @@
 #include <bootx64.h>
 
-static UINT64 DrvBaseAddr = 0xFFFF800001000000;
+
+// TODO : Make pages closer to the kernel for more efficiency
+static UINT64 DrvBaseAddr = 0xFFFF810000000000;
 
 
 static CHAR16 Path[256] = {0};
@@ -36,7 +38,6 @@ BOOLEAN USERAPI DllRead(char* DllName, void** DllCopy, UINT64* DllFileSize, void
 
 STS USERAPI LoadStartupDriver(UINT16* DriverName, void* Custum) {
     (void)Custum;
-
     // Build the path correctly
     
     Status = StrCpyS(Path, 256, L"\\System\\");

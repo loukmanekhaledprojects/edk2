@@ -7,6 +7,8 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <typedef.h>
 #include <user.h>
+#include <Library/PrintLib.h>
+
 void* USERAPI TempPAlloc(UINT64 l);
 #define PageMapAlloc(__x) TempPAlloc(__x)
 #include <kernel.h>
@@ -18,8 +20,7 @@ void* USERAPI TempPAlloc(UINT64 l);
 #include <Guid/FileInfo.h>
 #include <Library/BaseMemoryLib.h>
 OSKERNELDATA* OsKernelData;
-#define EASSERT(__f, errmsg) if(EFI_ERROR(Status = __f)) {Print(L"Cannot continue the boot process.\n%s STATUS : %lx\n", errmsg, Status); gBS->Exit(gImageHandle, 1, 0, NULL);}
-
+#define EASSERT(__f, errmsg) {static EFI_STATUS __Status; if(EFI_ERROR(__Status = __f)) {Print(L"Cannot continue the boot process.\n%s STATUS : %lx\n", errmsg, __Status); gBS->Exit(gImageHandle, 1, 0, NULL);}}
 void TestUi();
 void Svga3dSetup();
 void SvgaInit();
