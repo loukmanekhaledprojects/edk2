@@ -1,6 +1,6 @@
 #include <bootx64.h>
 
-
+UINT64 DrvBaseAddr;
 void* EFIAPI bAllocatePages(UINTN NumPages) {
     EFI_PHYSICAL_ADDRESS Addr;
     EFI_PHYSICAL_ADDRESS* Pt = &Addr;
@@ -14,6 +14,7 @@ void* EFIAPI bAllocatePages(UINTN NumPages) {
         EFI_PHYSICAL_ADDRESS NewAddr = MAJOR(Addr, 0x200000);
         if(NewAddr != Addr) EASSERT(gBS->FreePages(Addr, (NewAddr - Addr) >> 12), "Large Page Allocation error");
         Addr = NewAddr;
+
     }
     return (void*)((UINTN)Addr);
 }

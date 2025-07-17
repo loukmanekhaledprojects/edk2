@@ -2,10 +2,11 @@
 
 
 // TODO : Make pages closer to the kernel for more efficiency
-static UINT64 DrvBaseAddr = 0xFFFF810000000000;
+UINT64 DrvBaseAddr = 0xFFFF810000000000;
 
 
 static CHAR16 Path[256] = {0};
+
 
 STS USERAPI LoadDll(UINT16* DllName, void* Custum) {
     (void)Custum;
@@ -16,24 +17,44 @@ STS USERAPI LoadDll(UINT16* DllName, void* Custum) {
     UINT64 FileSize;
     void* File = ReadFile(Path, &FileSize);
     STARTUPDLL* Dll = bAllocatePool(sizeof(STARTUPDLL));
-    StrCpyS(Dll->Name, 256, DllName);
+    UINTN Len = StrLen(DllName);
+    for(UINTN i=0;i<Len+1;i++){
+        Dll->Name[i] = (UINT8)DllName[i];
+    }
     Dll->File = File;
+    Dll->FileSize = FileSize;
+    Dll->Loaded = FALSE;
     Dll->Next = OsKernelData->StartupDlls;
     OsKernelData->StartupDlls = Dll;
+
+
+    
     return 0;
 }
-static CHAR16 __Name[256];
 BOOLEAN USERAPI DllRead(char* DllName, void** DllCopy, UINT64* DllFileSize, void** LoadAddress) {
-    AsciiStrToUnicodeStrS(DllName, __Name, 256);
-    Print(L"Dll read request : %s\n", __Name);
+    AsciiPrint("Dll read request : %a\n", DllName);
     if(AsciiStrCmp(DllName, "OSKERNEL.exe") == 0) {
         Print(L"OSKERNEL Linking...\n");
         *DllCopy = &OsKernelData->Image;
         *DllFileSize = 0; // For the kernel (no need to load image again)
         *LoadAddress = OsKernelData->Image.Base;
-    } else while(1);
+        return TRUE;
+    } else {
+        while(1);
+        STARTUPDLL* Dll = OsKernelData->StartupDlls;
+        while(Dll) {
+            if(AsciiStriCmp(Dll->Name, DllName) == 0) {
+                Print(L"Linking DLL : %a", Dll->Name);
+                *DllCopy = Dll->File;
+                *DllFileSize = Dll->FileSize;
+                *LoadAddress = (void*)DrvBaseAddr;
+                return TRUE;
+            }
+            Dll = Dll->Next;
+        }
+        return FALSE;
+    }
 
-    return TRUE;
 }
 
 STS USERAPI LoadStartupDriver(UINT16* DriverName, void* Custum) {
@@ -54,8 +75,8 @@ STS USERAPI LoadStartupDriver(UINT16* DriverName, void* Custum) {
     OsKernelData->StartupDrivers = Driver;
     
     Driver->Image.Base = (void*)DrvBaseAddr;
-    DrvBaseAddr+=MAJOR(((UINT64)Driver->Image.VaLimit - (UINT64)Driver->Image.VaBase), 0x200000);
     if((Status = LoadImage(&Driver->Image, DriverImage, FileSize, DllRead))) return Status;
+    DrvBaseAddr+=MAJOR(((UINT64)Driver->Image.VaLimit - (UINT64)Driver->Image.VaBase), 0x200000);
  
     return 0;
 }
