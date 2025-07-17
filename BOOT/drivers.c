@@ -71,8 +71,14 @@ STS USERAPI LoadStartupDriver(UINT16* DriverName, void* Custum) {
     void* DriverImage = ReadFile(Path, &FileSize);
     STARTUPDRIVER* Driver = bAllocatePool(sizeof(STARTUPDRIVER));
     StrCpyS(Driver->Name, 256, DriverName);
-    Driver->Next = OsKernelData->StartupDrivers;
-    OsKernelData->StartupDrivers = Driver;
+    
+    if(OsKernelData->StartupDrivers) {
+        OsKernelData->LastDrv->Next = Driver;
+    } else {
+        OsKernelData->StartupDrivers = Driver;
+    }
+    OsKernelData->LastDrv = Driver;
+    Driver->Next = NULL;
     
     Driver->Image.Base = (void*)DrvBaseAddr;
     if((Status = LoadImage(&Driver->Image, DriverImage, FileSize, DllRead))) return Status;
