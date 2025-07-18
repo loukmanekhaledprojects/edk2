@@ -53,7 +53,8 @@ UlibSetMemoryInterface(&ULibIf);
     OsKernelData->Image.Base = (void*)0xFFFF800000000000;
     if(LoadImage(&OsKernelData->Image, KernelFile, FileSize, NULL)) {
         Print(L"Failed to load the kernel\n");
-        return EFI_UNSUPPORTED;
+        while(1);
+        // return EFI_UNSUPPORTED;
     }
 
     LoadStartupDrivers();
@@ -77,8 +78,9 @@ UINT32 DescriptorVersion = 0;
 EFI_MEMORY_DESCRIPTOR* MemoryMap = NULL;
 Status = gBS->GetMemoryMap(&MapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion);
 if(Status != EFI_BUFFER_TOO_SMALL) {
-	Print(L"Failed to get memory map\n");
-	return EFI_UNSUPPORTED;
+	Print(L"Failed to get memory map (0)\n");
+    while(1);
+	// return EFI_UNSUPPORTED;
 }
 
 MapSize += 3 * DescriptorSize;
@@ -88,8 +90,9 @@ SetMem(MemoryMap, MapSize, 0);
 
 MEMORYMGRTBL* Mmt = bAllocatePages(MAJOR(sizeof(MEMORYMGRTBL) + ((MapSize/DescriptorSize) * sizeof(BLOCK)), 0x1000) >> 12);
 if(EFI_ERROR(gBS->GetMemoryMap(&MapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion))) {
-	Print(L"Failed to get memory map\n");
-	return EFI_UNSUPPORTED;
+	Print(L"Failed to get memory map (1)\n");
+    while(1);
+	// return EFI_UNSUPPORTED;
 }
 OsKernelData->PhysicalAllocator = Mmt;
 
@@ -132,7 +135,8 @@ gBS->SetWatchdogTimer(0, 0, 0, NULL);
 // Exit boot services
 if(EFI_ERROR(gBS->ExitBootServices(ImageHandle, MapKey))) {
 	Print(L"Failed to exit boot services\n");
-	return EFI_UNSUPPORTED;
+    while(1);
+	// return EFI_UNSUPPORTED;
 }
 
 // Setup page table

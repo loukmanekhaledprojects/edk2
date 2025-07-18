@@ -94,6 +94,6 @@ void LoadStartupDrivers(void) {
     STS Code;
     if((Code = IterateByLine(DllList, DllListSize, LoadDll, NULL)) || (Code = IterateByLine(DriverList, FileSize, LoadStartupDriver, NULL))) {
         Print(L"Failed to load %s with code %d\n", Path, Code);
-        gBS->Exit(gImageHandle, EFI_UNSUPPORTED, 0, NULL);
+        while(1);
     }
 }

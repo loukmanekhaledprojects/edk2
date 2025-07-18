@@ -20,7 +20,7 @@ void* USERAPI TempPAlloc(UINT64 l);
 #include <Guid/FileInfo.h>
 #include <Library/BaseMemoryLib.h>
 OSKERNELDATA* OsKernelData;
-#define EASSERT(__f, errmsg) {static EFI_STATUS __Status; if(EFI_ERROR(__Status = __f)) {Print(L"Cannot continue the boot process.\n%s STATUS : %lx\n", errmsg, __Status); gBS->Exit(gImageHandle, 1, 0, NULL);}}
+#define EASSERT(__f, errmsg) {static EFI_STATUS __Status; if(EFI_ERROR(__Status = __f)) {Print(L"Cannot continue the boot process.\n%s STATUS : %lx\n", errmsg, __Status); while(1);}}
 void TestUi();
 void Svga3dSetup();
 void SvgaInit();

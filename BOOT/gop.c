@@ -6,7 +6,7 @@ void EFIAPI LocateBootFb(void) {
 	Status = gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid, NULL, (void**)&GraphicsProtocol);
 	if(EFI_ERROR(Status)) {
 		Print(L"Graphics Output Protocol is not supported.\n");
-		gBS->Exit(gImageHandle, EFI_UNSUPPORTED, 0, NULL);
+		while(1);
 	}
 	EFI_GRAPHICS_OUTPUT_MODE_INFORMATION* ModeInfo;
 	UINTN szInfo;
@@ -14,7 +14,7 @@ void EFIAPI LocateBootFb(void) {
 	if(Status == EFI_NOT_STARTED) {
 		if(EFI_ERROR(GraphicsProtocol->SetMode(GraphicsProtocol, 0)) || !GraphicsProtocol->Mode || !GraphicsProtocol->Mode->FrameBufferBase) {
 			Print(L"Failed to set video mode.\n");
-			gBS->Exit(gImageHandle, EFI_UNSUPPORTED, 0, NULL);
+			while(1);
 		}
 	}
 	OsKernelData->BootFb.BaseAddress = (void*)GraphicsProtocol->Mode->FrameBufferBase;
